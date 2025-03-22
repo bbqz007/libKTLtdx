@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeMirror JavaScript 编辑器</title>
+    <link rel="stylesheet" href="codemirror.min.css">
+    <script src="codemirror.min.js"></script>
+    <script src="codemirror.javascript.min.js"></script>
+</head>
+<body>
+    <h3>CodeMirror JavaScript 编辑器</h3>
+    <textarea id="codeEditor">// 输入 JavaScript 代码</textarea>
+    <button onclick="runCode()">运行代码</button>
+    <h4>控制台输出：</h4>
+    <pre id="output"></pre>
+
+    <script>
+        // 初始化 CodeMirror
+        const editor = CodeMirror.fromTextArea(document.getElementById("codeEditor"), {
+            mode: "javascript",
+            lineNumbers: true,
+            theme: "default"
+        });
+
+        function runCode() {
+            const code = editor.getValue();
+            const outputElement = document.getElementById("output");
+
+            try {
+                let oldLog = console.log;
+                let logMessages = [];
+                console.log = function (message) {
+                    logMessages.push(message);
+                    oldLog.apply(console, arguments);
+                };
+
+                eval(code); // 执行代码
+                outputElement.textContent = logMessages.join("\n");
+
+                console.log = oldLog;
+            } catch (error) {
+                outputElement.textContent = "错误: " + error;
+            }
+        }
+    </script>
+</body>
+</html>
