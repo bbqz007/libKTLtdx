@@ -1268,6 +1268,99 @@ ktl.debug.inject = async function(pid, dllName) {
 	
 };
 
+ktl.file = {}
+ktl.file.native = {}
+ktl.file.native.read = async function(fullpath, pbuf, bufsize, offset, readsize) {
+	let res = await ktl.async_caller2.await_cmd({c:'rfile', a:[fullpath, pbuf, bufsize, offset, readsize]});
+	let [, readbytes] = res.result;
+	return readbytes;
+};
+
+ktl.file.native.write = async function(fullpath, pbuf, bufsize, offset) {
+	let res = await ktl.async_caller2.await_cmd({c:'wfile', a:[fullpath, pbuf, bufsize, offset]});
+	return res.result;
+};
+
+ktl.file.readbuf = async function(fullpath, offset, size) {
+	if (offset == undefined)
+		offset = 0;
+	if (size == undefined)
+		size = 0;
+	let res = await ktl.async_caller2.await_cmd({c:'rfile', a:[fullpath, 0, 0, offset, size]});
+	if (res.result)
+	{
+		let [pbuf, readbytes] = res.result;
+		if (!pbuf)
+			throw new Error('failed to open file');
+		let ret = await ktl.async_access.readbuf(pbuf, readbytes);
+		ktl.async_caller2.await_cmd({c:'free', a:[pbuf]});
+		return ret;
+	}
+	return new ArrayBuffer;
+};
+
+ktl.file.writebuf = async function(fullpath, arraybuffer, offset) {
+	if (offset == undefined)
+		offset = 0;
+	let size = arraybuffer.byteLength;
+	let ret = {}
+	let scope_free = [];
+	let scope_dtor = [];
+	let need_throw = null;
+	try {
+		await
+		(async function() {
+			let pbuf = await ktl.async_caller2.await_cmd({c:'zalloc', a:[size]});
+			pbuf = pbuf.result;
+			scope_free.push(pbuf);
+			await ktl.async_access.writebuf(pbuf, arraybuffer);
+			let res = await ktl.async_caller2.await_cmd({c:'wfile', a:[fullpath, pbuf, size, offset]});
+			if (res.result)
+				ret = res;
+		})();
+	} catch (e) {
+		need_throw = e;
+	}
+	scope_free.map(p=>{
+		ktl.async_caller2.await_cmd({c:'free',a:[p]});
+	});
+	scope_dtor.map(f=>{f()});
+	if (need_throw)
+		throw need_throw;
+	return ret;		
+};
+
+ktl.os = {};
+ktl.os.system = async function(/**string*/wcmd, /**string*/ title, /**bool*/ pause) {
+	let ret = {}
+	let scope_free = [];
+	let need_throw = null;
+	if (typeof title == 'string')
+		wcmd = `title ${title} & ` + wcmd;
+	if (pause != undefined && pause)
+		wcmd += ' && set /p __input__ = ';
+	try {
+		await
+		(async function() {
+			wcmd += '\0';
+			
+			let pwbuf = await ktl.async_caller2.await_cmd({c:'zalloc',a:[wcmd.length*2]});
+			pwbuf = pwbuf.result;
+			scope_free.push(pwbuf);
+			await ktl.async_access.writebuf(pwbuf, ktl.struct.enc_unicode(wcmd));
+			let res = await ktl.async_caller2.await_capi('msvcrt', '_wsystem')(pwbuf);
+		})();
+	} catch (e) {
+		need_throw = e;
+	}
+	scope_free.map(p=>{
+		ktl.async_caller2.await_cmd({c:'free',a:[p]});
+	});
+	if (need_throw)
+		throw need_throw;
+	return ret;
+};
+
 
 ktl.asRaw = function(addr) {
 	if (!Number.isInteger(addr) && addr < 0 || addr >0x80000000)
