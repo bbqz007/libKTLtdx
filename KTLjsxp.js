@@ -153,6 +153,28 @@ ktl.async_caller.fastapi = function(mod, pfn) {
 		return fetch("http://ktl/cmd/?cmd=12", {method:'POST', body:JSON.stringify(KTLcmdJsonRemap(cmd))});
 	};
 };
+ktl.async_caller.vwinapi = function(slot) {
+	return async function() {
+		let obj = 0;
+		let args = Array.from(arguments);
+		if (args.length)
+			obj = args[0];
+		cmd = {c:'std', p:0, v:[obj, slot*4], a: args};
+		return fetch("http://ktl/cmd/?cmd=12", {method:'POST', body:JSON.stringify(KTLcmdJsonRemap(cmd))});
+	};
+};
+
+ktl.async_caller.vthisapi = function(slot) {
+	return async function() {
+		let obj = 0;
+		let args = Array.from(arguments);
+		if (args.length)
+			obj = args[0];
+		cmd = {c:'this', p:0, v:[obj, slot*4], a: args};
+		return fetch("http://ktl/cmd/?cmd=12", {method:'POST', body:JSON.stringify(KTLcmdJsonRemap(cmd))});
+	};
+};
+	
 /// Z#20250315, doc
 ///  helper for await (await fetch()).text()
 ///  finally parse result to JSON
@@ -190,6 +212,19 @@ ktl.async_caller.await_thisapi = function(mod, pfn) {
 	};
 }
 
+ktl.async_caller.await_vwinapi = function(slot) {
+	return async function() {
+		this.api = ktl.async_caller.vwinapi(slot);
+		return ktl.async_caller.await2(this.api(...arguments));
+	};
+}
+
+ktl.async_caller.await_vthisapi = function(slot) {
+	return async function() {
+		this.api = ktl.async_caller.vthisapi(slot);
+		return ktl.async_caller.await2(this.api(...arguments));
+	};
+}
 
 ktl.async_caller2 = {}
 ktl.async_caller2.winapi = function(mod, pfn) {
@@ -768,6 +803,54 @@ ktl.struct.hex = function(input) {
 	}
 	return '';
 };
+
+/// Z#20250425
+function guidToArrayBuffer(guidStr) {
+	// 移除连字符
+	const hex = guidStr.replace(/-/g, '');
+	if (hex.length !== 32) throw new Error('Invalid GUID format');
+
+
+	const buffer = ktl.struct.fromhex(hex);
+	const view = new Uint8Array(buffer);
+
+	const ret = 
+	ktl.struct.pack('16B', view[3], view[2], view[1], view[0],
+		view[5], view[4], view[7], view[6],
+		view[8], view[9], view[10], view[11], 
+		view[12], view[13], view[14], view[15]);
+
+	return ret;
+}
+
+/// Z#20250425
+function arrayBufferToGuid(buffer) {
+	if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== 16)
+		throw new Error('Invalid GUID buffer');
+
+	const view = new Uint8Array(buffer);
+
+	// 重新排列回原始 GUID 结构顺序（大小端转换）
+	const reordered = [
+		view[3], view[2], view[1], view[0],     // Data1
+		view[5], view[4],                       // Data2
+		view[7], view[6],                       // Data3
+		view[8], view[9],                       // Data4[0-1]
+		view[10], view[11], view[12], view[13], view[14], view[15] // Data4[2-7]
+	];
+
+	// 转成两位十六进制字符串
+	const hexParts = reordered.map(b => b.toString(16).padStart(2, '0'));
+
+	// 拼接为 GUID 字符串格式
+	return [
+		hexParts.slice(0, 4).join(''),
+		hexParts.slice(4, 6).join(''),
+		hexParts.slice(6, 8).join(''),
+		hexParts.slice(8, 10).join(''),
+		hexParts.slice(10, 16).join('')
+	].join('-').toUpperCase();
+}
 
 
 ktl.async_access = {}
